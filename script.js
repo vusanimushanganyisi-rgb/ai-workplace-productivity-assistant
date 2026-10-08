@@ -1,740 +1,424 @@
-````javascript
+import express from "express";
+import OpenAI from "openai";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+const app = express();
+const port = process.env.PORT || 3000;
+
+// OpenAI client
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+
+// Middleware
+app.use(express.json({ limit: "100kb" }));
+app.use(express.static("."));
+
 /* =========================================================
-   PRODUCTIVITYAI — JAVASCRIPT
+   AI PROMPTS
+   These prompts are coded into the application.
    ========================================================= */
 
-/* ---------------------------------------------------------
-   TOOL CONFIGURATION
---------------------------------------------------------- */
+const prompts = {
 
-const toolConfig = {
+  /* ---------------------------------------------------------
+     1. PROFESSIONAL EMAIL GENERATOR
+     --------------------------------------------------------- */
+  email: `
+You are a Professional Workplace Email Generator.
 
-    email: {
-        title: "Professional Email Generator",
-        number: "01",
-        placeholder:
-            "Example: Write an email to my manager explaining that I need to move tomorrow's meeting to Friday..."
-    },
+Your task is to transform the user's information into a
+professional workplace email.
 
-    meeting: {
-        title: "Meeting Notes Summarizer",
-        number: "02",
-        placeholder:
-            "Paste your meeting notes here. Include discussions, decisions, action items and deadlines if available."
-    },
+RULES:
+1. Only use information provided by the user.
+2. Never invent names, dates, deadlines, qualifications,
+   meetings or commitments.
+3. Use the selected tone.
+4. Adapt the language to the selected audience.
+5. Keep the email clear, professional and concise.
+6. If important information is missing, use [placeholder]
+   instead of guessing.
 
-    tasks: {
-        title: "AI Task Planner",
-        number: "03",
-        placeholder:
-            "Example: Complete monthly report, prepare presentation, respond to client emails, attend project meeting..."
-    },
+OUTPUT FORMAT:
 
-    research: {
-        title: "AI Research Assistant",
-        number: "04",
-        placeholder:
-            "Enter a workplace topic you would like to understand, analyse or structure."
-    },
+## Email Draft
 
-    chat: {
-        title: "AI Workplace Chatbot",
-        number: "05",
-        placeholder:
-            "Ask a workplace productivity question, brainstorm an idea or request professional guidance..."
-    }
+**Subject:** [appropriate subject]
 
+**Email:**
+
+[professional email]
+
+## Review Before Sending
+
+- Check names and recipient details.
+- Check dates, times and deadlines.
+- Confirm that the information is accurate.
+
+Selected tone: {{tone}}
+Selected audience: {{audience}}
+
+User request:
+{{input}}
+`,
+
+
+  /* ---------------------------------------------------------
+     2. MEETING NOTES SUMMARIZER
+     --------------------------------------------------------- */
+  meeting: `
+You are an AI Meeting Notes Summarizer.
+
+Your task is to convert the supplied meeting notes into
+a clear and professional meeting summary.
+
+RULES:
+1. Use ONLY the information supplied.
+2. Do not invent decisions.
+3. Do not invent people.
+4. Do not invent deadlines.
+5. Do not invent action items.
+6. If information is missing, write "Not specified".
+7. Make the result easy to scan.
+
+OUTPUT FORMAT:
+
+## Meeting Summary
+
+[Short summary of the meeting]
+
+## Key Discussion Points
+
+- Point 1
+- Point 2
+- Point 3
+
+## Decisions Made
+
+- Decision 1
+- Decision 2
+
+## Action Items
+
+| Action | Responsible Person | Deadline |
+|---|---|---|
+| Action | Person | Deadline |
+
+## Open Questions
+
+- Question 1
+- Question 2
+
+## Review Before Sharing
+
+- Compare the summary with the original meeting notes.
+- Confirm all responsible people.
+- Confirm all deadlines.
+
+Meeting notes:
+
+{{input}}
+`,
+
+
+  /* ---------------------------------------------------------
+     3. AI TASK PLANNER
+     --------------------------------------------------------- */
+  tasks: `
+You are an AI Workplace Task Planner.
+
+Your task is to organise the user's workplace tasks
+according to urgency and business impact.
+
+RULES:
+1. Use only the tasks supplied by the user.
+2. Do not invent deadlines.
+3. Do not invent business priorities that are not supported
+   by the information provided.
+4. Explain why each task has its priority.
+5. Make the plan practical and easy to follow.
+
+OUTPUT FORMAT:
+
+## Priority Plan
+
+| Task | Priority | Reason | Suggested Order | Deadline |
+|---|---|---|---|---|
+| Task | High/Medium/Low | Reason | 1 | Deadline |
+
+## Recommended Work Sequence
+
+1. First task
+2. Second task
+3. Third task
+
+## Time-Management Recommendations
+
+- Recommendation 1
+- Recommendation 2
+- Recommendation 3
+
+## Review Note
+
+Confirm the priorities against actual business deadlines
+and manager/team expectations.
+
+User tasks:
+
+{{input}}
+`,
+
+
+  /* ---------------------------------------------------------
+     4. AI RESEARCH ASSISTANT
+     --------------------------------------------------------- */
+  research: `
+You are an AI Workplace Research Assistant.
+
+Your task is to help the user understand a workplace,
+business or technology topic.
+
+RULES:
+1. Explain information in simple professional language.
+2. Do not fabricate statistics.
+3. Do not fabricate sources.
+4. Do not fabricate quotations.
+5. Clearly identify information that needs verification.
+6. Focus on practical workplace relevance.
+
+OUTPUT FORMAT:
+
+## Simple Explanation
+
+[Explain the topic clearly]
+
+## Five Key Points
+
+1. Key point
+2. Key point
+3. Key point
+4. Key point
+5. Key point
+
+## Benefits
+
+- Benefit 1
+- Benefit 2
+- Benefit 3
+
+## Risks or Limitations
+
+- Risk 1
+- Risk 2
+- Risk 3
+
+## Workplace Implications
+
+- Implication 1
+- Implication 2
+- Implication 3
+
+## Recommended Next Steps
+
+1. Step 1
+2. Step 2
+3. Step 3
+
+## Verification Note
+
+Identify information that should be checked using reliable
+sources before it is used professionally.
+
+Research topic:
+
+{{input}}
+`,
+
+
+  /* ---------------------------------------------------------
+     5. AI WORKPLACE CHATBOT
+     --------------------------------------------------------- */
+  chat: `
+You are an AI Workplace Productivity Assistant.
+
+You help users with:
+
+- Professional communication
+- Workplace writing
+- Task planning
+- Meeting preparation
+- Research organisation
+- Productivity
+- General workplace questions
+
+RULES:
+1. Give practical and professional answers.
+2. Use clear language.
+3. Do not invent company policies.
+4. Do not invent facts.
+5. Ask for clarification when essential information is missing.
+6. Do not make high-stakes HR, legal or financial decisions.
+7. Tell the user when human review is required.
+
+OUTPUT FORMAT:
+
+## Answer
+
+[Direct answer to the user's question]
+
+## Practical Steps
+
+1. Step 1
+2. Step 2
+3. Step 3
+
+## Considerations
+
+- Important consideration
+
+## Human Review
+
+Explain whether the user should confirm the information
+with a manager, HR department, company policy or another
+reliable source.
+
+User question:
+
+{{input}}
+`
 };
 
 
-/* ---------------------------------------------------------
-   CURRENT TOOL
---------------------------------------------------------- */
+/* =========================================================
+   FUNCTION TO BUILD THE PROMPT
+   ========================================================= */
 
-let currentTool = "email";
+function buildPrompt(tool, input, tone, audience) {
 
+  let prompt = prompts[tool];
 
-/* ---------------------------------------------------------
-   DOM ELEMENTS
---------------------------------------------------------- */
+  if (!prompt) {
+    return null;
+  }
 
-const userInput = document.getElementById("userInput");
-const charCount = document.getElementById("charCount");
-const generateButton = document.getElementById("generateButton");
-const output = document.getElementById("output");
-const copyButton = document.getElementById("copyButton");
+  prompt = prompt.replace("{{input}}", input || "");
 
-const selectedToolTitle =
-    document.getElementById("selectedToolTitle");
+  prompt = prompt.replace(
+    "{{tone}}",
+    tone || "Professional"
+  );
 
-const emailOptions =
-    document.getElementById("emailOptions");
+  prompt = prompt.replace(
+    "{{audience}}",
+    audience || "Manager"
+  );
 
-const tone =
-    document.getElementById("tone");
-
-const audience =
-    document.getElementById("audience");
-
-
-/* ---------------------------------------------------------
-   SELECT TOOL
---------------------------------------------------------- */
-
-function selectTool(tool) {
-
-    if (!toolConfig[tool]) {
-        return;
-    }
-
-    currentTool = tool;
-
-    const config = toolConfig[tool];
-
-    /* Update title */
-
-    if (selectedToolTitle) {
-        selectedToolTitle.textContent = config.title;
-    }
-
-    /* Update placeholder */
-
-    if (userInput) {
-        userInput.placeholder = config.placeholder;
-    }
-
-    /* Update email-specific controls */
-
-    if (emailOptions) {
-
-        if (tool === "email") {
-            emailOptions.style.display = "grid";
-        } else {
-            emailOptions.style.display = "none";
-        }
-
-    }
-
-    /* Scroll to workspace */
-
-    const workspace =
-        document.getElementById("workspace");
-
-    if (workspace) {
-
-        workspace.scrollIntoView({
-            behavior: "smooth",
-            block: "start"
-        });
-
-    }
-
-    /* Clear old input */
-
-    if (userInput) {
-        userInput.value = "";
-        updateCharacterCount();
-    }
-
-    /* Clear previous output */
-
-    showEmptyOutput();
-
+  return prompt;
 }
 
 
-/* ---------------------------------------------------------
-   CHARACTER COUNTER
---------------------------------------------------------- */
+/* =========================================================
+   API ENDPOINT
+   ========================================================= */
 
-function updateCharacterCount() {
+app.post("/api/generate", async (req, res) => {
 
-    if (!userInput || !charCount) {
-        return;
+  try {
+
+    const {
+      tool,
+      input,
+      tone,
+      audience
+    } = req.body;
+
+    // Validate tool
+    if (!tool || !prompts[tool]) {
+
+      return res.status(400).json({
+        error: "Invalid AI assistant tool."
+      });
+
     }
 
-    const length = userInput.value.length;
+    // Validate input
+    if (
+      typeof input !== "string" ||
+      !input.trim()
+    ) {
 
-    charCount.textContent = length;
+      return res.status(400).json({
+        error: "Please enter some information first."
+      });
 
-}
-
-
-/* ---------------------------------------------------------
-   EMPTY OUTPUT
---------------------------------------------------------- */
-
-function showEmptyOutput() {
-
-    if (!output) {
-        return;
     }
 
-    output.innerHTML = `
-        <div class="empty-output">
+    // Prevent excessively large requests
+    if (input.length > 6000) {
 
-            <div class="empty-icon">
-                ✦
-            </div>
+      return res.status(400).json({
+        error: "Please keep your input below 6,000 characters."
+      });
 
-            <h3>
-                Your AI result will appear here
-            </h3>
-
-            <p>
-                Enter your request and click
-                <strong>Generate with AI</strong>.
-            </p>
-
-        </div>
-    `;
-
-}
-
-
-/* ---------------------------------------------------------
-   LOADING STATE
---------------------------------------------------------- */
-
-function showLoading() {
-
-    if (!output) {
-        return;
     }
 
-    output.innerHTML = `
-        <div class="empty-output">
-
-            <div class="empty-icon">
-                ✦
-            </div>
-
-            <h3>
-                AI is working...
-            </h3>
-
-            <p>
-                Analysing your request and preparing
-                a professional response.
-            </p>
-
-            <div class="loading">
-                <div class="loading-dots">
-
-                    <span></span>
-                    <span></span>
-                    <span></span>
-
-                </div>
-            </div>
-
-        </div>
-    `;
-
-}
-
-
-/* ---------------------------------------------------------
-   ESCAPE HTML
---------------------------------------------------------- */
-
-function escapeHtml(text) {
-
-    return text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-
-}
-
-
-/* ---------------------------------------------------------
-   SIMPLE MARKDOWN FORMATTER
---------------------------------------------------------- */
-
-function formatMarkdown(markdown) {
-
-    if (!markdown) {
-        return "";
-    }
-
-    let text = escapeHtml(markdown);
-
-    /* Code blocks */
-
-    text = text.replace(
-        /```([\s\S]*?)```/g,
-        "<pre><code>$1</code></pre>"
+    // Build coded prompt
+    const finalPrompt = buildPrompt(
+      tool,
+      input,
+      tone,
+      audience
     );
 
-    /* Headings */
+    // Send prompt to OpenAI
+    const response = await client.responses.create({
 
-    text = text.replace(
-        /^### (.*)$/gm,
-        "<h3>$1</h3>"
-    );
+      model: process.env.OPENAI_MODEL || "gpt-6-luna",
 
-    text = text.replace(
-        /^## (.*)$/gm,
-        "<h2>$1</h2>"
-    );
-
-    text = text.replace(
-        /^# (.*)$/gm,
-        "<h2>$1</h2>"
-    );
-
-    /* Bold */
-
-    text = text.replace(
-        /\*\*(.*?)\*\*/g,
-        "<strong>$1</strong>"
-    );
-
-    /* Italic */
-
-    text = text.replace(
-        /\*(.*?)\*/g,
-        "<em>$1</em>"
-    );
-
-    /* Bullet lists */
-
-    text = text.replace(
-        /^- (.*)$/gm,
-        "<li>$1</li>"
-    );
-
-    text = text.replace(
-        /(<li>.*<\/li>)/gs,
-        "<ul>$1</ul>"
-    );
-
-    /* Numbered lists */
-
-    text = text.replace(
-        /^\d+\. (.*)$/gm,
-        "<li>$1</li>"
-    );
-
-    /* Horizontal line */
-
-    text = text.replace(
-        /^---$/gm,
-        "<hr>"
-    );
-
-    /* Paragraphs */
-
-    const lines = text.split("\n");
-
-    let result = "";
-
-    let insideList = false;
-
-    lines.forEach(line => {
-
-        const trimmed = line.trim();
-
-        if (!trimmed) {
-            return;
-        }
-
-        if (
-            trimmed.startsWith("<h2>") ||
-            trimmed.startsWith("<h3>") ||
-            trimmed.startsWith("<ul>") ||
-            trimmed.startsWith("<li>") ||
-            trimmed.startsWith("<hr>") ||
-            trimmed.startsWith("<pre>")
-        ) {
-            result += trimmed;
-            return;
-        }
-
-        result += `<p>${trimmed}</p>`;
+      input: finalPrompt
 
     });
 
-    /* Clean duplicated paragraph tags */
+    // Return AI response
+    res.json({
 
-    result = result
-        .replace(/<\/p><p>/g, "</p><p>")
-        .replace(/<p>(<h[23]>)/g, "$1")
-        .replace(/(<\/h[23]>)<\/p>/g, "$1");
+      output:
+        response.output_text ||
+        "The AI did not return a response."
 
-    return result;
+    });
 
-}
+  } catch (error) {
 
+    console.error("AI Error:", error);
 
-/* ---------------------------------------------------------
-   DISPLAY OUTPUT
---------------------------------------------------------- */
+    res.status(500).json({
 
-function displayOutput(text) {
+      error:
+        "The AI service could not complete your request. Please check the API configuration."
 
-    if (!output) {
-        return;
-    }
+    });
 
-    output.innerHTML = formatMarkdown(text);
+  }
 
-    output.scrollTop = 0;
+});
 
-}
 
+/* =========================================================
+   START SERVER
+   ========================================================= */
 
-/* ---------------------------------------------------------
-   DISPLAY ERROR
---------------------------------------------------------- */
+app.listen(
+  port,
+  "0.0.0.0",
+  () => {
 
-function displayError(message) {
-
-    if (!output) {
-        return;
-    }
-
-    output.innerHTML = `
-        <div class="empty-output">
-
-            <div class="empty-icon">
-                !
-            </div>
-
-            <h3>
-                Something went wrong
-            </h3>
-
-            <p>
-                ${escapeHtml(message)}
-            </p>
-
-        </div>
-    `;
-
-}
-
-
-/* ---------------------------------------------------------
-   GENERATE AI RESPONSE
---------------------------------------------------------- */
-
-async function generateAIResponse() {
-
-    if (!userInput) {
-        return;
-    }
-
-    const input = userInput.value.trim();
-
-    /* Validate input */
-
-    if (!input) {
-
-        displayError(
-            "Please enter some information before generating a response."
-        );
-
-        userInput.focus();
-
-        return;
-    }
-
-    /* Character limit */
-
-    if (input.length > 6000) {
-
-        displayError(
-            "Your request is too long. Please keep it below 6,000 characters."
-        );
-
-        return;
-    }
-
-    /* Loading */
-
-    showLoading();
-
-    if (generateButton) {
-        generateButton.disabled = true;
-        generateButton.innerHTML = `
-            <span class="button-icon">✦</span>
-            AI is working...
-        `;
-    }
-
-    try {
-
-        /* Build request */
-
-        const requestBody = {
-            tool: currentTool,
-            input: input
-        };
-
-        /* Email-specific options */
-
-        if (currentTool === "email") {
-
-            requestBody.tone =
-                tone ? tone.value : "Professional";
-
-            requestBody.audience =
-                audience ? audience.value : "Manager";
-
-        }
-
-        /* Send request to backend */
-
-        const response = await fetch(
-            "/api/generate",
-            {
-                method: "POST",
-
-                headers: {
-                    "Content-Type": "application/json"
-                },
-
-                body: JSON.stringify(requestBody)
-            }
-        );
-
-
-        /* Parse response */
-
-        const data = await response.json();
-
-
-        /* Handle server errors */
-
-        if (!response.ok) {
-
-            throw new Error(
-                data.error ||
-                "The AI service could not complete your request."
-            );
-
-        }
-
-
-        /* Display result */
-
-        displayOutput(
-            data.output ||
-            "The AI returned no text."
-        );
-
-
-    } catch (error) {
-
-        console.error(error);
-
-        displayError(
-            error.message ||
-            "Unable to connect to the AI service."
-        );
-
-    } finally {
-
-        if (generateButton) {
-
-            generateButton.disabled = false;
-
-            generateButton.innerHTML = `
-                <span class="button-icon">✦</span>
-                Generate with AI
-                <span class="button-arrow">→</span>
-            `;
-
-        }
-
-    }
-
-}
-
-
-/* ---------------------------------------------------------
-   COPY OUTPUT
---------------------------------------------------------- */
-
-async function copyOutput() {
-
-    if (!output) {
-        return;
-    }
-
-    const text = output.innerText.trim();
-
-    if (!text) {
-        return;
-    }
-
-    try {
-
-        await navigator.clipboard.writeText(text);
-
-        if (copyButton) {
-
-            const originalText =
-                copyButton.textContent;
-
-            copyButton.textContent = "Copied!";
-
-            setTimeout(() => {
-
-                copyButton.textContent =
-                    originalText;
-
-            }, 1800);
-
-        }
-
-    } catch (error) {
-
-        console.error(
-            "Copy failed:",
-            error
-        );
-
-        alert(
-            "Unable to copy the result. Please select and copy the text manually."
-        );
-
-    }
-
-}
-
-
-/* ---------------------------------------------------------
-   CHARACTER COUNTER EVENT
---------------------------------------------------------- */
-
-if (userInput) {
-
-    userInput.addEventListener(
-        "input",
-        updateCharacterCount
+    console.log(
+      `AI Workplace Productivity Assistant running on port ${port}`
     );
 
-}
-
-
-/* ---------------------------------------------------------
-   GENERATE BUTTON EVENT
---------------------------------------------------------- */
-
-if (generateButton) {
-
-    generateButton.addEventListener(
-        "click",
-        generateAIResponse
-    );
-
-}
-
-
-/* ---------------------------------------------------------
-   COPY BUTTON EVENT
---------------------------------------------------------- */
-
-if (copyButton) {
-
-    copyButton.addEventListener(
-        "click",
-        copyOutput
-    );
-
-}
-
-
-/* ---------------------------------------------------------
-   ENTER KEY SUPPORT
---------------------------------------------------------- */
-
-if (userInput) {
-
-    userInput.addEventListener(
-        "keydown",
-        function(event) {
-
-            /*
-             * Ctrl + Enter or Cmd + Enter
-             * generates the response.
-             */
-
-            if (
-                (event.ctrlKey || event.metaKey) &&
-                event.key === "Enter"
-            ) {
-
-                event.preventDefault();
-
-                generateAIResponse();
-
-            }
-
-        }
-    );
-
-}
-
-
-/* ---------------------------------------------------------
-   INITIALISE APPLICATION
---------------------------------------------------------- */
-
-document.addEventListener(
-    "DOMContentLoaded",
-    function() {
-
-        currentTool = "email";
-
-        updateCharacterCount();
-
-        if (emailOptions) {
-            emailOptions.style.display = "grid";
-        }
-
-    }
-);
-````
-
-### How the three files connect
-
-Your **`index.html`** should have these two lines:
-
-```html
-<link rel="stylesheet" href="style.css">
-```
-
-inside `<head>`, and:
-
-```html
-<script src="script.js"></script>
-```
-
-just before `</body>`.
-
-So the relationship is:
-
-```text
-                 index.html
-                     │
-          ┌──────────┴──────────┐
-          ↓                     ↓
-      style.css             script.js
-          │                     │
-       DESIGN              FUNCTIONALITY
-          │                     │
-    colours/fonts          AI requests
-    buttons/cards          tool selection
-    layouts                character counter
-    responsive design      copy button
-```
-
-And your existing **`server.js` remains separate** because it handles the connection between the website and the AI API.
-
-**One important correction:** the JavaScript above expects your existing `/api/generate` endpoint from `server.js`, so the AI features will work when you run the full Node/Express project.
+  }
+);ess project.
